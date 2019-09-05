@@ -181,7 +181,7 @@ func readParameters() {
 		defaultsChanged = true
 	}
 
-	text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Access Token (%s): ", defaults.Token))
+	text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Access Token (leave empty if token not required) (%s): ", defaults.Token))
 	if err == nil {
 		defaults.Token = text
 		defaultsChanged = true
