@@ -50,34 +50,38 @@ var defaultsFilePath string
 
 func main() {
 
+	// set defaults for config folder and file name
 	configFolderPath = "./config"
 	defaultsFileName = "defaults.json"
 	defaultsFilePath = configFolderPath + "/" + defaultsFileName
 
+	// get user home directory from os and set aws config and credentials file paths
 	usr, err := user.Current()
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	awsConfigFilePath = usr.HomeDir + "/.aws/config"
 	awsCredentialsFilePath = usr.HomeDir + "/.aws/credentials"
 
+	//load default data from json file if it existst
 	loadDefaults()
 
+	// read required params from command line
 	readParameters()
 
-	tokenCode, err := readValuFromCli("Token code from your device: ")
-
-	if err != nil {
-		log.Fatal("Please enter a valid 6 digit token code from your MFA device!")
+	// read the token code from mfa device until it's valid code
+	tokenCode, err := readValueFromCli("Token code from your device: ")
+	for err != nil || len(tokenCode) != 6 {
+		fmt.Println("Please enter a valid 6 digit token code from your MFA device!")
+		tokenCode, err = readValueFromCli("Token code from your device: ")
 	}
 
+	// create aws session and get temporary credentials
 	mySession, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{
 			Region:      aws.String(defaults.Region),
 			Credentials: credentials.NewStaticCredentials(defaults.AccessKeyID, defaults.SecretKey, defaults.Token),
 		},
-		//Profile: longTermProfileName,
 	})
 
 	if err != nil {
@@ -98,6 +102,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// format credentials received and write it to aws credentials file.
 	creds := temporaryCredential{
 		ProfileName:   defaults.ProfileName,
 		AssumedRole:   "False",
@@ -108,6 +113,8 @@ func main() {
 		Expiration:    *token.Credentials.Expiration,
 	}
 	writeToAwsCredentialsFile(&creds, awsCredentialsFilePath)
+
+	// if it doesn't exist, create entry for the selected profile on aws config file
 	writeToAwsConfigFile(&creds, awsConfigFilePath)
 }
 
@@ -150,37 +157,37 @@ func readParameters() {
 
 	defaultsChanged := false
 
-	text, err := readValuFromCli(fmt.Sprintf("Region (%s): ", defaults.Region))
+	text, err := readValueFromCli(fmt.Sprintf("Region (%s): ", defaults.Region))
 	if err == nil {
 		defaults.Region = text
 		defaultsChanged = true
 	}
 
-	text, err = readValuFromCli(fmt.Sprintf("Device arn (%s): ", defaults.DeviceARN))
+	text, err = readValueFromCli(fmt.Sprintf("Device arn (%s): ", defaults.DeviceARN))
 	if err == nil {
 		defaults.DeviceARN = text
 		defaultsChanged = true
 	}
 
-	text, err = readValuFromCli(fmt.Sprintf("Permanent AWS Access Key (%s): ", defaults.AccessKeyID))
+	text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Access Key (%s): ", defaults.AccessKeyID))
 	if err == nil {
 		defaults.AccessKeyID = text
 		defaultsChanged = true
 	}
 
-	text, err = readValuFromCli(fmt.Sprintf("Permanent AWS Secret Key (%s): ", defaults.SecretKey))
+	text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Secret Key (%s): ", defaults.SecretKey))
 	if err == nil {
 		defaults.SecretKey = text
 		defaultsChanged = true
 	}
 
-	text, err = readValuFromCli(fmt.Sprintf("Permanent AWS Access Token (%s): ", defaults.Token))
+	text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Access Token (%s): ", defaults.Token))
 	if err == nil {
 		defaults.Token = text
 		defaultsChanged = true
 	}
 
-	text, err = readValuFromCli(fmt.Sprintf("Profile name for temporary credentials to save into (%s): ", defaults.ProfileName))
+	text, err = readValueFromCli(fmt.Sprintf("Profile name for temporary credentials to save into (%s): ", defaults.ProfileName))
 	if err == nil {
 		defaults.ProfileName = text
 		defaultsChanged = true
@@ -191,16 +198,17 @@ func readParameters() {
 		msg := fmt.Sprintf("Your credentials for the profile [%s] is not expired yet! It will expire at %s. Would you like to refresh it (y/n): ", defaults.ProfileName, tm)
 		text = ""
 		for strings.ToLower(text) != "y" && strings.ToLower(text) != "n" {
-			text, err = readValuFromCli(msg)
+			text, err = readValueFromCli(msg)
 		}
 		if strings.ToLower(text) == "n" {
-			log.Fatal("Exiting because existing token is still valid and the user selected NOT to refresh it!")
+			fmt.Println("Exiting because existing token is still valid and the user selected NOT to refresh it!")
+			os.Exit(0)
 		}
 	}
 
 	durationValid := false
 	for !durationValid {
-		text, err = readValuFromCli(fmt.Sprintf("Duration in seconds (%d): ", defaults.Duration))
+		text, err = readValueFromCli(fmt.Sprintf("Duration in seconds (%d): ", defaults.Duration))
 		if err == nil {
 			n, e := strconv.ParseInt(text, 10, 64)
 			if e == nil {
@@ -222,7 +230,7 @@ func readParameters() {
 
 	if defaultsChanged {
 
-		text, err = readValuFromCli("\nYou have changed the configuration value(s). Would you like to save changes to defaults [yes/no, y/n] (no): ")
+		text, err = readValueFromCli("\nYou have changed the configuration value(s). Would you like to save changes to defaults [yes/no, y/n] (no): ")
 		if err == nil && (strings.ToLower(text) == "y" || strings.ToLower(text) == "yes") {
 			saveDefaultsAsJSONFile()
 		}
@@ -245,7 +253,7 @@ func saveDefaultsAsJSONFile() {
 	jsonFile.Write(jsonData)
 }
 
-func readValuFromCli(message string) (string, error) {
+func readValueFromCli(message string) (string, error) {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf(message)
 	text, _ := reader.ReadString('\n')
@@ -346,6 +354,7 @@ func writeToAwsCredentialsFile(creds *temporaryCredential, filePath string) {
 		log.Fatal(err)
 	}
 
+	fmt.Printf("Credentials saved to %s Token will expire at %s\n", filePath, creds.Expiration)
 }
 
 func didTokenInCredentialsFileExpired(credsFilePath string, profileName string) (bool, string) {
