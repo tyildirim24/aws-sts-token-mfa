@@ -42,6 +42,7 @@ type defaultData struct {
 
 var defaults defaultData
 var tokenCode string
+var awsConfigDirectory string
 var awsCredentialsFilePath string
 var awsConfigFilePath string
 var configFolderPath string
@@ -60,8 +61,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	awsConfigFilePath = usr.HomeDir + "/.aws/config"
-	awsCredentialsFilePath = usr.HomeDir + "/.aws/credentials"
+
+	awsConfigDirectory = usr.HomeDir + "/.aws"
+	awsConfigFilePath = awsConfigDirectory + "/config"
+	awsCredentialsFilePath = awsConfigDirectory + "/credentials"
+
+	if !directoryExists(awsConfigDirectory) {
+		err := os.MkdirAll(awsConfigDirectory, 0744)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	//load default data from json file if it existst
 	loadDefaults()
@@ -334,6 +344,7 @@ func writeToAwsCredentialsFile(creds *temporaryCredential, filePath string) {
 		log.Fatal(err)
 	}
 
+	//TODO: Don't write expired credentials back to the file
 	for key, val := range profilesInCredsFile {
 		if key != creds.ProfileName {
 			text = fmt.Sprintf("[%s]\n", key)
