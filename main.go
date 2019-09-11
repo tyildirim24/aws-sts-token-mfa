@@ -344,17 +344,21 @@ func writeToAwsCredentialsFile(creds *temporaryCredential, filePath string) {
 		log.Fatal(err)
 	}
 
-	//TODO: Don't write expired credentials back to the file
 	for key, val := range profilesInCredsFile {
 		if key != creds.ProfileName {
-			text = fmt.Sprintf("[%s]\n", key)
-			for key2, val2 := range val {
-				text += fmt.Sprintf("%s = %s\n", key2, val2)
-			}
-			text += "\n"
-			_, err = io.WriteString(credsFile, text)
-			if err != nil {
-				log.Fatal(err)
+			//Keep the existing credentials only if they are not expired
+			if !didCredsExpire(val) {
+				text = fmt.Sprintf("[%s]\n", key)
+				for key2, val2 := range val {
+					text += fmt.Sprintf("%s = %s\n", key2, val2)
+				}
+				text += "\n"
+				_, err = io.WriteString(credsFile, text)
+				if err != nil {
+					log.Fatal(err)
+				}
+			} else {
+				log.Printf("Credentials for %s expired at %s. Removing this profile!\n", key, val["expiration"])
 			}
 		}
 	}
@@ -366,6 +370,23 @@ func writeToAwsCredentialsFile(creds *temporaryCredential, filePath string) {
 	}
 
 	fmt.Printf("Credentials saved to %s Token will expire at %s\n", filePath, creds.Expiration)
+}
+
+func didCredsExpire(data map[string]string) bool {
+	if expStr, ok := data["expiration"]; ok {
+		tm, err := time.Parse(time.RFC1123Z, expStr)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		now := time.Now()
+		_, offset := now.Zone()
+		duration := time.Duration(offset)
+		now = now.Add(duration)
+
+		return now.After(tm)
+	}
+	return false
 }
 
 func didTokenInCredentialsFileExpired(credsFilePath string, profileName string) (bool, string) {
