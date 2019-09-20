@@ -328,6 +328,16 @@ func writeToAwsConfigFile(creds *temporaryCredential, filePath string) {
 	text += "output=json\n"
 	text += "\n"
 
+	//if default profile doesn't exists, create it. aws cli will crash
+	if creds.ProfileName != "default" {
+		if _, ok := profilesInConfigFile["profile default"]; !ok {
+			text += "[profile default]\n"
+			text += fmt.Sprintf("region = %s\n", defaults.Region)
+			text += "output=json\n"
+			text += "\n"
+		}
+	}
+
 	credsFile, err := os.Create(filePath)
 
 	if err != nil {
