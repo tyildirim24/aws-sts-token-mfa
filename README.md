@@ -14,7 +14,7 @@ First time the application is run, it will ask for required parameters. At the e
 
 Parameters:
 - **Region**		AWS region
-- **MFA Device ARN**		Multi factor authentication device ARN (you can find this in IAM)
+- **MFA Device ARN**		Multi factor authentication device ARN i.e. \*arn:aws:iam::123456789012:mfa/user\* (you can find this in IAM)
 - **Permanent AWS Access Key**		Your permanent AWS access key
 - **Permanent AWS Secret Key**		Your permanent AWS secret key
 - **Profile name**		Profile name that the temporary credentials will be saved for (you can type default or any other profile name)
