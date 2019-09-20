@@ -45,45 +45,39 @@ var tokenCode string
 var awsConfigDirectory string
 var awsCredentialsFilePath string
 var awsConfigFilePath string
-var configFolderPath string
-var defaultsFileName string
-var defaultsFilePath string
 
-func main() {
-
+const (
 	// set defaults for config folder and file name
 	configFolderPath = "./config"
 	defaultsFileName = "defaults.json"
 	defaultsFilePath = configFolderPath + "/" + defaultsFileName
+)
 
-	// get user home directory from os and set aws config and credentials file paths
-	usr, err := user.Current()
-	if err != nil {
-		log.Fatal(err)
-	}
+func main() {
 
-	awsConfigDirectory = usr.HomeDir + "/.aws"
-	awsConfigFilePath = awsConfigDirectory + "/config"
-	awsCredentialsFilePath = awsConfigDirectory + "/credentials"
+	args := os.Args[1:]
 
-	if !directoryExists(awsConfigDirectory) {
-		err := os.MkdirAll(awsConfigDirectory, 0744)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
+	tokenCode := getTokenCodeFromArgs(&args)
+
+	setAwsConfigFilePaths()
 
 	//load default data from json file if it existst
 	loadDefaults()
 
-	// read required params from command line
-	readParameters()
+	// read parameters if there is no skip argument "-skip"
+	if !argsContainSkip(&args) {
+		// read required params from command line
+		readParameters()
+	}
 
-	// read the token code from mfa device until it's valid code
-	tokenCode, err := readValueFromCli("Token code from your device: ")
-	for err != nil || len(tokenCode) != 6 {
-		fmt.Println("Please enter a valid 6 digit token code from your MFA device!")
+	if len(tokenCode) != 6 {
+		// read the token code from mfa device until it's valid code
+		var err error
 		tokenCode, err = readValueFromCli("Token code from your device: ")
+		for err != nil || len(tokenCode) != 6 {
+			fmt.Println("Please enter a valid 6 digit token code from your MFA device!")
+			tokenCode, err = readValueFromCli("Token code from your device: ")
+		}
 	}
 
 	// create aws session and get temporary credentials
@@ -126,6 +120,54 @@ func main() {
 
 	// if it doesn't exist, create entry for the selected profile on aws config file
 	writeToAwsConfigFile(&creds, awsConfigFilePath)
+}
+
+func getTokenCodeFromArgs(args *[]string) string {
+	for i := 0; i < len(*args); i++ {
+		if strings.ToLower((*args)[i]) == "-token" || strings.ToLower((*args)[i]) == "-t" {
+			if len(*args) > (i + 1) {
+				token := strings.Replace((*args)[i+1], "\n", "", -1)
+				token = strings.Replace(token, "\r", "", -1)
+				if len(token) != 6 {
+					log.Fatal("Token from MFA device must be 6 characters long")
+				} else {
+					return token
+				}
+			} else {
+				log.Fatal("Token from MFA device must be given after -t or -token parameter")
+			}
+		}
+	}
+	return ""
+}
+
+func argsContainSkip(args *[]string) bool {
+	for _, arg := range *args {
+		if strings.ToLower(arg) == "-skip" || strings.ToLower(arg) == "-s" {
+			return true
+		}
+	}
+	return false
+}
+
+// set aws config file paths and create folder if it odesn't exist
+func setAwsConfigFilePaths() {
+	// get user home directory from os and set aws config and credentials file paths
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	awsConfigDirectory = usr.HomeDir + "/.aws"
+	awsConfigFilePath = awsConfigDirectory + "/config"
+	awsCredentialsFilePath = awsConfigDirectory + "/credentials"
+
+	if !directoryExists(awsConfigDirectory) {
+		err := os.MkdirAll(awsConfigDirectory, 0744)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 func loadDefaults() {
@@ -191,11 +233,11 @@ func readParameters() {
 		defaultsChanged = true
 	}
 
-	text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Access Token (leave empty if token not required) (%s): ", defaults.Token))
-	if err == nil {
-		defaults.Token = text
-		defaultsChanged = true
-	}
+	// text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Access Token (leave empty if token not required) (%s): ", defaults.Token))
+	// if err == nil {
+	// 	defaults.Token = text
+	// 	defaultsChanged = true
+	// }
 
 	text, err = readValueFromCli(fmt.Sprintf("Profile name for temporary credentials to save into (%s): ", defaults.ProfileName))
 	if err == nil {
@@ -269,6 +311,7 @@ func readValueFromCli(message string) (string, error) {
 	text, _ := reader.ReadString('\n')
 	// convert CRLF to LF
 	text = strings.Replace(text, "\n", "", -1)
+	text = strings.Replace(text, "\r", "", -1)
 	if len(text) < 1 {
 		err := errors.New("No value")
 		return "", err
