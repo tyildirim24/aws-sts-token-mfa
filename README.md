@@ -27,12 +27,14 @@ After you save these, app will use these values as defaults and let you select t
 
 If you select not to save the defaults, you will need to enter these values every time.
 
+This program also removes the profiles whose token expired. It displays deleted profiles info on command prompt.
+
 ## Command line arguments
 `$ ./aws-sts-token-mfa -skip` or `$ ./aws-sts-token-mfa -s`  will skip all parameter entries and use defaults
 
-`$ ./aws-sts-token-mfa -t 123456` or `$ ./aws-sts-token-mfa -t 123456` will get token code from your device from arguments and don't ask token (considering your token code is 123456). You will still need to enter other parameters.
+`$ ./aws-sts-token-mfa -t 123456` or `$ ./aws-sts-token-mfa -t 123456` will get token code from arguments and don't ask during parameter entry. You will still need to enter other parameters. (Replace 123456 with token code from your device)
 
 `$ ./aws-sts-token-mfa -s -t 123456` will get token code and skip parameters and get temporary token with one command using the defaults.
 
-`$ ./aws-sts-token-mfa -r arn:aws:iam::123456789012:role/my-role` or `$ ./aws-sts-token-mfa -role arn:aws:iam::123456789012:role/my-role`  will generate token for the profile given and also create another profile which assumes the given role. New role name format is profilename-assumed-{role_name} (i.e. default-assumed-my-role). Name of ths new assumed role profile is printed on command line.
+`$ ./aws-sts-token-mfa -r arn:aws:iam::123456789012:role/my-role` or `$ ./aws-sts-token-mfa -role arn:aws:iam::123456789012:role/my-role`  will generate token for the given profile and also create another profile which assumes the given role. New role name format is {profil_ename}-assumed-{role_name} (i.e. default-assumed-my-role). Name of this new assumed role profile is printed on command line.
 
