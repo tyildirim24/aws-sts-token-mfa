@@ -463,24 +463,25 @@ func writeToAwsCredentialsFile(creds *temporaryCredential, filePath string) {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("\nCredentials saved to %s Token will expire at %s\n", filePath, creds.Expiration)
+	fmt.Println("\n==================================================")
+	fmt.Printf("\nCredentials saved in profile [%s] in file %s file.\nToken will expire at %s\n", defaults.ProfileName, filePath, creds.Expiration)
+	fmt.Println("\n==================================================")
 	if len(roleARN) > 0 {
-		fmt.Println("\n==================================================")
 		fmt.Printf("A new profile [%s] which assumes role %s is created. You can assume this role by appending '--profile %s' to cli commands.\n", roleProfileName, roleARN, roleProfileName)
 		userARN := strings.Replace(defaults.DeviceARN, "mfa", "user", 1)
 		fmt.Printf("Make sure that %s is authorized for sts:AssumeRole on %s and this role's trust relationship policy has:\n", userARN, roleARN)
 
 		warningText := `
-		"Statement": [
-			{
-				"Effect": "Allow",
-				"Principal": {
-			  	"AWS": "{{user_arn}}"
-				},
-				"Action": "sts:AssumeRole"
+	"Statement": [
+		{
+			"Effect": "Allow",
+			"Principal": {
+		  	"AWS": "{{user_arn}}"
 			},
-			...
-		]`
+			"Action": "sts:AssumeRole"
+		},
+		...
+	]`
 
 		fmt.Printf("%s\n", strings.Replace(warningText, "{{user_arn}}", userARN, 1))
 		fmt.Println("==================================================")
