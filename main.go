@@ -120,8 +120,6 @@ func main() {
 		Expiration:    *token.Credentials.Expiration,
 	}
 
-	log.Printf("\n%+v\n\n", creds)
-
 	writeToAwsCredentialsFile(&creds, awsCredentialsFilePath)
 
 	// if it doesn't exist, create entry for the selected profile on aws config file
