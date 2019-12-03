@@ -45,6 +45,7 @@ var tokenCode string
 var awsConfigDirectory string
 var awsCredentialsFilePath string
 var awsConfigFilePath string
+var roleARN string
 
 const (
 	// set defaults for config folder and file name
@@ -58,6 +59,8 @@ func main() {
 	args := os.Args[1:]
 
 	tokenCode := getTokenCodeFromArgs(&args)
+
+	roleARN = getRoleArnFromArgs(&args)
 
 	setAwsConfigFilePaths()
 
@@ -116,6 +119,9 @@ func main() {
 		SecurityToken: *token.Credentials.SessionToken,
 		Expiration:    *token.Credentials.Expiration,
 	}
+
+	log.Printf("\n%+v\n\n", creds)
+
 	writeToAwsCredentialsFile(&creds, awsCredentialsFilePath)
 
 	// if it doesn't exist, create entry for the selected profile on aws config file
@@ -135,6 +141,25 @@ func getTokenCodeFromArgs(args *[]string) string {
 				}
 			} else {
 				log.Fatal("Token from MFA device must be given after -t or -token parameter")
+			}
+		}
+	}
+	return ""
+}
+
+func getRoleArnFromArgs(args *[]string) string {
+	for i := 0; i < len(*args); i++ {
+		if strings.ToLower((*args)[i]) == "-role" || strings.ToLower((*args)[i]) == "-r" {
+			if len(*args) > (i + 1) {
+				role := strings.Replace((*args)[i+1], "\n", "", -1)
+				role = strings.Replace(role, "\r", "", -1)
+				if len(role) <= 32 {
+					log.Fatal("Role ARN must be at least 32 characters long")
+				} else {
+					return role
+				}
+			} else {
+				log.Fatal("Assume role Role-ARN must be given after -r or -role parameter")
 			}
 		}
 	}
@@ -322,11 +347,20 @@ func readValueFromCli(message string) (string, error) {
 func writeToAwsConfigFile(creds *temporaryCredential, filePath string) {
 
 	profilesInConfigFile := getProfilesFromFile(filePath)
+	roleProfileName := ""
 
 	text := fmt.Sprintf("[profile %s]\n", creds.ProfileName)
 	text += fmt.Sprintf("region = %s\n", defaults.Region)
 	text += "output=json\n"
 	text += "\n"
+
+	if len(roleARN) > 0 {
+		roleProfileName = getAssumedProfileNameFromARN(roleARN, defaults.ProfileName)
+		text += fmt.Sprintf("[profile %s]\n", roleProfileName)
+		text += fmt.Sprintf("region = %s\n", defaults.Region)
+		text += "output=json\n"
+		text += "\n"
+	}
 
 	//if default profile doesn't exists, create it. aws cli will crash
 	if creds.ProfileName != "default" {
@@ -351,7 +385,7 @@ func writeToAwsConfigFile(creds *temporaryCredential, filePath string) {
 	}
 
 	for key, val := range profilesInConfigFile {
-		if key != fmt.Sprintf("profile %s", creds.ProfileName) {
+		if key != fmt.Sprintf("profile %s", creds.ProfileName) && key != fmt.Sprintf("profile %s", roleProfileName) {
 			text = fmt.Sprintf("[%s]\n", key)
 			for key2, val2 := range val {
 				text += fmt.Sprintf("%s = %s\n", key2, val2)
@@ -376,14 +410,23 @@ func writeToAwsCredentialsFile(creds *temporaryCredential, filePath string) {
 
 	profilesInCredsFile := getProfilesFromFile(filePath)
 
+	roleProfileName := ""
+
 	text := fmt.Sprintf("[%s]\n", creds.ProfileName)
-	text += fmt.Sprintf("assumed_role = %s\n", creds.AssumedRole)
+	//text += fmt.Sprintf("assumed_role = %s\n", creds.AssumedRole)
 	text += fmt.Sprintf("aws_access_key_id = %s\n", creds.AccessKeyID)
 	text += fmt.Sprintf("aws_secret_access_key = %s\n", creds.SecretKeyID)
 	text += fmt.Sprintf("aws_session_token = %s\n", creds.SessionToken)
 	text += fmt.Sprintf("aws_security_token = %s\n", creds.SecurityToken)
 	text += fmt.Sprintf("expiration = %s\n", creds.Expiration.Format(time.RFC1123Z))
 	text += "\n"
+	if len(roleARN) > 0 {
+		roleProfileName = getAssumedProfileNameFromARN(roleARN, defaults.ProfileName)
+		text += fmt.Sprintf("[%s]\n", roleProfileName)
+		text += fmt.Sprintf("role_arn = %s\n", roleARN)
+		text += fmt.Sprintf("source_profile = %s\n", creds.ProfileName)
+		text += "\n"
+	}
 
 	credsFile, err := os.Create(filePath)
 
@@ -398,7 +441,7 @@ func writeToAwsCredentialsFile(creds *temporaryCredential, filePath string) {
 	}
 
 	for key, val := range profilesInCredsFile {
-		if key != creds.ProfileName {
+		if key != creds.ProfileName && key != roleProfileName {
 			//Keep the existing credentials only if they are not expired
 			if !didCredsExpire(val) {
 				text = fmt.Sprintf("[%s]\n", key)
@@ -422,7 +465,33 @@ func writeToAwsCredentialsFile(creds *temporaryCredential, filePath string) {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("Credentials saved to %s Token will expire at %s\n", filePath, creds.Expiration)
+	fmt.Printf("\nCredentials saved to %s Token will expire at %s\n", filePath, creds.Expiration)
+	if len(roleARN) > 0 {
+		fmt.Println("\n==================================================")
+		fmt.Printf("A new profile [%s] which assumes role %s is created. You can assume this role by appending '--profile %s' to cli commands.\n", roleProfileName, roleARN, roleProfileName)
+		userARN := strings.Replace(defaults.DeviceARN, "mfa", "user", 1)
+		fmt.Printf("Make sure that %s is authorized for sts:AssumeRole on %s and this role's trust relationship policy has:\n", userARN, roleARN)
+
+		warningText := `
+		"Statement": [
+			{
+				"Effect": "Allow",
+				"Principal": {
+			  	"AWS": "{{user_arn}}"
+				},
+				"Action": "sts:AssumeRole"
+			},
+			...
+		]`
+
+		fmt.Printf("%s\n", strings.Replace(warningText, "{{user_arn}}", userARN, 1))
+		fmt.Println("==================================================")
+	}
+}
+
+func getAssumedProfileNameFromARN(arn string, profile string) string {
+	cols := strings.Split(arn, "/")
+	return fmt.Sprintf("%s-assumed-%s", profile, cols[len(cols)-1])
 }
 
 func didCredsExpire(data map[string]string) bool {
