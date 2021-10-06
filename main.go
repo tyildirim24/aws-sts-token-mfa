@@ -1,6 +1,7 @@
 package main
 
 import (
+	"aws-sts-token-mfa/go/crypto"
 	"bufio"
 	"encoding/json"
 	"errors"
@@ -41,7 +42,6 @@ type defaultData struct {
 }
 
 var defaults defaultData
-var tokenCode string
 var awsConfigDirectory string
 var awsCredentialsFilePath string
 var awsConfigFilePath string
@@ -53,6 +53,8 @@ const (
 	defaultsFileName = "defaults.json"
 	defaultsFilePath = configFolderPath + "/" + defaultsFileName
 )
+
+var cryptoKey = "1c5e61ce116c47867d9a059debbfc9f4ab0d0bf7c1efe0011a26fd0471ce4a93"
 
 func main() {
 
@@ -83,11 +85,24 @@ func main() {
 		}
 	}
 
+	accessKeyDecrypted, err := crypto.Decrypt(defaults.AccessKeyID, cryptoKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	secretKeyDecrypted, err := crypto.Decrypt(defaults.SecretKey, cryptoKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// create aws session and get temporary credentials
 	mySession, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{
-			Region:      aws.String(defaults.Region),
-			Credentials: credentials.NewStaticCredentials(defaults.AccessKeyID, defaults.SecretKey, defaults.Token),
+			Region: aws.String(defaults.Region),
+			Credentials: credentials.NewStaticCredentials(
+				accessKeyDecrypted,
+				secretKeyDecrypted,
+				defaults.Token,
+			),
 		},
 	})
 
@@ -99,7 +114,12 @@ func main() {
 
 	var getTokenInput sts.GetSessionTokenInput
 
-	getTokenInput.SetSerialNumber(defaults.DeviceARN)
+	decrypteddeviceArn, err := crypto.Decrypt(defaults.DeviceARN, cryptoKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	getTokenInput.SetSerialNumber(decrypteddeviceArn)
 	getTokenInput.SetTokenCode(tokenCode)
 	getTokenInput.SetDurationSeconds(defaults.Duration)
 
@@ -203,7 +223,16 @@ func loadDefaults() {
 	}
 
 	if !fileExists(defaultsFilePath) {
-		defaults = defaultData{}
+		empty, err := crypto.Encrypt("", cryptoKey)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defaults = defaultData{
+			DeviceARN:   empty,
+			AccessKeyID: empty,
+			SecretKey:   empty,
+			Token:       "",
+		}
 		saveDefaultsAsJSONFile()
 	}
 
@@ -226,6 +255,43 @@ func loadDefaults() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	//Replace un-encrypted values with encrypted
+	//TODO: validate if the values are really unencrypted params
+	defaultsChanged := false
+	_, err = crypto.Decrypt(defaults.DeviceARN, cryptoKey)
+	if err != nil {
+		deviceARN, e := crypto.Encrypt(defaults.DeviceARN, cryptoKey)
+		if e != nil {
+			log.Fatal(e)
+		}
+		defaults.DeviceARN = deviceARN
+		defaultsChanged = true
+	}
+
+	_, err = crypto.Decrypt(defaults.SecretKey, cryptoKey)
+	if err != nil {
+		secretKey, e := crypto.Encrypt(defaults.SecretKey, cryptoKey)
+		if e != nil {
+			log.Fatal(e)
+		}
+		defaults.SecretKey = secretKey
+		defaultsChanged = true
+	}
+
+	_, err = crypto.Decrypt(defaults.AccessKeyID, cryptoKey)
+	if err != nil {
+		accessKeyID, e := crypto.Encrypt(defaults.AccessKeyID, cryptoKey)
+		if e != nil {
+			log.Fatal(e)
+		}
+		defaults.AccessKeyID = accessKeyID
+		defaultsChanged = true
+	}
+
+	if defaultsChanged {
+		saveDefaultsAsJSONFile()
+	}
 }
 
 func readParameters() {
@@ -238,21 +304,45 @@ func readParameters() {
 		defaultsChanged = true
 	}
 
-	text, err = readValueFromCli(fmt.Sprintf("Device arn (%s): ", defaults.DeviceARN))
+	decryptedDeviceArn, err := crypto.Decrypt(defaults.DeviceARN, cryptoKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	text, err = readValueFromCli(fmt.Sprintf("Device arn (%s): ", decryptedDeviceArn))
 	if err == nil {
-		defaults.DeviceARN = text
+		decryptedDeviceArn, e := crypto.Encrypt(text, cryptoKey)
+		if e != nil {
+			log.Fatal(e)
+		}
+		defaults.DeviceARN = decryptedDeviceArn
 		defaultsChanged = true
 	}
 
-	text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Access Key (%s): ", defaults.AccessKeyID))
+	decryptedAccessKey, err := crypto.Decrypt(defaults.AccessKeyID, cryptoKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Access Key (%s): ", decryptedAccessKey))
 	if err == nil {
-		defaults.AccessKeyID = text
+		decryptedAccessKey, e := crypto.Encrypt(text, cryptoKey)
+		if e != nil {
+			log.Fatal(e)
+		}
+		defaults.AccessKeyID = decryptedAccessKey
 		defaultsChanged = true
 	}
 
-	text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Secret Key (%s): ", defaults.SecretKey))
+	decryptedSecretKey, err := crypto.Decrypt(defaults.SecretKey, cryptoKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	text, err = readValueFromCli(fmt.Sprintf("Permanent AWS Secret Key (%s): ", decryptedSecretKey))
 	if err == nil {
-		defaults.SecretKey = text
+		decryptedSecretKey, e := crypto.Encrypt(text, cryptoKey)
+		if e != nil {
+			log.Fatal(e)
+		}
+		defaults.SecretKey = decryptedSecretKey
 		defaultsChanged = true
 	}
 
@@ -273,7 +363,7 @@ func readParameters() {
 		msg := fmt.Sprintf("Your credentials for the profile [%s] is not expired yet! It will expire at %s. Would you like to refresh it (y/n): ", defaults.ProfileName, tm)
 		text = ""
 		for strings.ToLower(text) != "y" && strings.ToLower(text) != "n" {
-			text, err = readValueFromCli(msg)
+			text, _ = readValueFromCli(msg)
 		}
 		if strings.ToLower(text) == "n" {
 			fmt.Println("Exiting because existing token is still valid and the user selected NOT to refresh it!")
@@ -283,7 +373,7 @@ func readParameters() {
 
 	durationValid := false
 	for !durationValid {
-		text, err = readValueFromCli(fmt.Sprintf("Duration in seconds (%d): ", defaults.Duration))
+		text, err = readValueFromCli(fmt.Sprintf("Duration in seconds [900-129600] (%d): ", defaults.Duration))
 		if err == nil {
 			n, e := strconv.ParseInt(text, 10, 64)
 			if e == nil {
@@ -330,13 +420,13 @@ func saveDefaultsAsJSONFile() {
 
 func readValueFromCli(message string) (string, error) {
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf(message)
+	fmt.Printf("%s", message)
 	text, _ := reader.ReadString('\n')
 	// convert CRLF to LF
 	text = strings.Replace(text, "\n", "", -1)
 	text = strings.Replace(text, "\r", "", -1)
 	if len(text) < 1 {
-		err := errors.New("No value")
+		err := errors.New("no value")
 		return "", err
 	}
 	return text, nil
