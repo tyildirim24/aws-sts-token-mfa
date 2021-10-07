@@ -18,10 +18,12 @@ Parameters:
 - **Permanent AWS Access Key**		Your permanent AWS access key
 - **Permanent AWS Secret Key**		Your permanent AWS secret key
 - **Profile name**		Profile name that the temporary credentials will be saved for (you can type default or any other profile name)
--**Duration**		Duration of the temporary token in seconds. You can enter any value between 900-129600 (15 minutes to 36 hours)
+- **Duration**		Duration of the temporary token in seconds. You can enter any value between 900-129600 (15 minutes to 36 hours)
 - **Token code**		6 digit token code from your device
 
-If you select to, these are saved to *./config/defaults.json* file. **YOU SHOULD PROTECT THIS FILE BEACUSE IT CONTAINS YOUR PERMANENT AWS KEYS!!!**
+**Sensitive parameters (device ARN, Access Key and Secret Key) are saved to config file encrypted. Encryption uses a default key defined in main.go function. If you set an environment variable AWS_STS_TOKEN_MFA_ENC_KEY with value as 64 character hexadecimal, app will use this key. Note that old data cannot be used if you change the key.. You will need to re-enter them.**
+
+If you select to, these are saved to *./config/defaults.json* file. Device Arn, Access Key and Secret Key are encrypted in Json file. Although sensitive data is encrypted, **YOU SHOULD PROTECT THIS FILE BEACUSE IT CONTAINS YOUR PERMANENT AWS KEYS!!!**
 
 After you save these, app will use these values as defaults and let you select them by just hitting enter key in consecutive runs. If you change any parameter, app will prompt you to save changes.
 

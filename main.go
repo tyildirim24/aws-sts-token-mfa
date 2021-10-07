@@ -3,6 +3,7 @@ package main
 import (
 	"aws-sts-token-mfa/go/crypto"
 	"bufio"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,7 +57,28 @@ const (
 
 var cryptoKey = "1c5e61ce116c47867d9a059debbfc9f4ab0d0bf7c1efe0011a26fd0471ce4a93"
 
+func isValidEncryptionKey(key string) bool {
+	if len(key) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(key)
+	return err == nil
+}
+
 func main() {
+
+	//check env if there's encryption key. if there is valid one use it. If not, use default key declated above
+	cryptoFromEnv := os.Getenv("AWS_STS_TOKEN_MFA_ENC_KEY")
+	if isValidEncryptionKey(cryptoFromEnv) {
+		fmt.Println("Found valid encryption key AWS_STS_TOKEN_MFA_ENC_KEY on environment. Will use this key")
+		cryptoKey = cryptoFromEnv
+	} else {
+		if !isValidEncryptionKey(cryptoKey) {
+			log.Fatal("Invalid cryptoKey. Must be 64 char long must be valid hexadecimal")
+		} else {
+			fmt.Println("Using default encryption key...")
+		}
+	}
 
 	args := os.Args[1:]
 
