@@ -2,4 +2,4 @@ module aws-sts-token-mfa
 
 go 1.16
 
-require github.com/aws/aws-sdk-go v1.40.58
+require github.com/aws/aws-sdk-go v1.41.0
